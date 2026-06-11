@@ -185,10 +185,30 @@
     border-radius:6px; padding:2px 7px; font-family:inherit; font-size:.78rem; color:var(--ink);
   }
   .card .btn.primary{margin-top:14px; width:100%; padding:9px;}
+  .card .btn.danger-solid{ margin-top:8px; width:100%; padding:9px; background:var(--accent); color:#23110f; font-weight:700; border:none; border-radius:8px; }
+  .card .btn.danger-solid:hover{ background:#ff8276; }
+  .card p{ color:var(--ink-dim); font-size:.88rem; line-height:1.55; margin-bottom:4px; }
 
   @media (max-width:900px){
     body{grid-template-columns:170px 1fr 200px;}
   }
+
+  /* ---------- Autosave indicator ---------- */
+  #saveStatus{
+    display:flex; align-items:center; gap:5px; font-size:.74rem;
+    color:var(--ink-dim); transition:color .3s;
+  }
+  #saveStatus .dot{
+    width:6px; height:6px; border-radius:50%;
+    background:var(--ink-dim); transition:background .3s;
+    flex:none;
+  }
+  #saveStatus.saved .dot{ background:#9ccc3c; }
+  #saveStatus.saved{ color:#9ccc3c; }
+  #saveStatus.saving .dot{ background:var(--gold); animation:pulse .6s infinite; }
+  #saveStatus.unsaved .dot{ background:var(--accent); }
+  #saveStatus.unsaved{ color:var(--accent); }
+  @keyframes pulse{ 0%,100%{opacity:1} 50%{opacity:.35} }
 </style>
 </head>
 <body>
@@ -223,6 +243,7 @@
   <div class="spacer"></div>
 
   <button class="btn" id="helpBtn" title="Shortcuts &amp; help">？ Help</button>
+  <button class="btn" id="clearBtn" title="Clear the entire build plate" style="color:#ff8276;">🗑 Clear</button>
   <button class="btn" id="openBtn" title="Open a saved project">📂 Open</button>
   <button class="btn" id="saveBtn" title="Save project file">💾 Save</button>
   <input type="file" id="openInput" accept=".json,.shapeforge" style="display:none">
@@ -306,6 +327,7 @@
   <span>Objects: <span class="k" id="statCount">0</span></span>
   <span>Units: <span class="k" id="statUnit">mm</span></span>
   <span>Snap: <span class="k" id="statSnap">1 mm</span></span>
+  <span id="saveStatus" title="Auto-saved to browser memory"><span class="dot"></span><span id="saveText">Autosave</span></span>
   <span style="margin-left:auto">Drag = move · Ctrl+drag = lift · Right-drag = pan · Scroll = zoom</span>
 </footer>
 
@@ -328,10 +350,19 @@
   </div>
 </div>
 
+<div class="overlay" id="clearOverlay">
+  <div class="card" style="max-width:380px;">
+    <h2>🗑 Clear build plate?</h2>
+    <p>This removes every shape from the scene. Your autosave will also be cleared. This can't be undone after confirming.</p>
+    <button class="btn danger-solid" id="clearConfirmBtn">Yes, wipe everything</button>
+    <button class="btn primary" id="clearCancelBtn" style="margin-top:8px;">Keep my work</button>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 /* =====================================================================
-   ShapeForge — a tiny, friendly 3D model maker
+   ShapeForge v2 — tiny, friendly 3D model maker
    Scene units are millimetres. Y is "up" on screen; exports convert to
    Z-up (the convention slicers and CAD tools expect).
 ===================================================================== */
@@ -365,8 +396,9 @@ const TIPS = [
   'Tip: switch units up top — sizes convert automatically',
   'Tip: export <b>STL</b> or <b>3MF</b> and send it straight to your slicer',
   'Tip: use <b>arrow keys</b> to nudge a shape by one snap step',
-  'Tip: <b>Save</b> writes a project file you can re-open and keep editing',
+  'Tip: click the dimension labels to edit sizes directly in the viewport',
 ];
+const LS_KEY = 'shapeforge_autosave';
 
 let unit = 'mm';
 let snap = 1;                 // mm, 0 = off
@@ -375,6 +407,7 @@ let meshes = {};              // id -> THREE.Mesh
 let selectedId = null;
 let idCounter = 1;
 let undoStack = [], redoStack = [];
+let autoSaveTimer = null;
 
 /* ---------------- three.js setup ---------------- */
 const canvas = document.getElementById('c');
@@ -707,6 +740,52 @@ function redo(){ if(!redoStack.length) return; const s=redoStack.pop(); undoStac
 function updateUndoButtons(){ $('undoBtn').disabled = undoStack.length<2; $('redoBtn').disabled = !redoStack.length; }
 $('undoBtn').onclick=undo; $('redoBtn').onclick=redo;
 
+/* ---------------- autosave (localStorage) ---------------- */
+const saveStatusEl = $('saveStatus');
+const saveTextEl   = $('saveText');
+
+function setSaveStatus(state){ // 'saving' | 'saved' | 'unsaved'
+  saveStatusEl.className = state;
+  saveTextEl.textContent = state==='saving'?'Saving…': state==='saved'?'Saved':'Unsaved';
+}
+function autoSave(){
+  setSaveStatus('saving');
+  try{
+    const data = JSON.stringify({app:'ShapeForge',version:1,unit,objects,idCounter});
+    localStorage.setItem(LS_KEY, data);
+    setSaveStatus('saved');
+  }catch(e){
+    setSaveStatus('unsaved');
+    console.warn('Autosave failed (storage full?)', e);
+  }
+}
+function scheduleAutosave(){
+  setSaveStatus('unsaved');
+  clearTimeout(autoSaveTimer);
+  autoSaveTimer = setTimeout(autoSave, 1200);
+}
+function loadAutosave(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(!raw) return false;
+    const data = JSON.parse(raw);
+    if(!Array.isArray(data.objects)) return false;
+    restore(JSON.stringify(data.objects));
+    if(data.unit && UNITS[data.unit]){ unit=data.unit; $('unitSel').value=unit; }
+    if(data.idCounter && data.idCounter>idCounter) idCounter=data.idCounter;
+    refreshAll(); pushUndo();
+    tip(`Restored your last session — <b>${objects.length}</b> object${objects.length===1?'':'s'} loaded`);
+    return true;
+  }catch(e){ return false; }
+}
+// pushUndo is wrapped below to also trigger autosave
+
+// Wrap pushUndo to also trigger autosave
+{
+  const _orig = pushUndo;
+  pushUndo = function(){ _orig(); scheduleAutosave(); };
+}
+
 /* ---------------- pointer interaction ---------------- */
 const ray = new THREE.Raycaster();
 const ptr = new THREE.Vector2();
@@ -1019,7 +1098,7 @@ function exportProject(){
     JSON.stringify({app:'ShapeForge', version:1, unit, objects}, null, 1),
     'application/json');
 }
-$('saveBtn').onclick=exportProject;
+$('saveBtn').onclick=()=>{ exportProject(); autoSave(); };
 $('openBtn').onclick=()=>$('openInput').click();
 $('openInput').addEventListener('change', e=>{
   const file=e.target.files[0]; if(!file) return;
@@ -1061,6 +1140,21 @@ $('helpBtn').onclick=()=>$('helpOverlay').classList.add('open');
 $('helpClose').onclick=()=>$('helpOverlay').classList.remove('open');
 $('helpOverlay').addEventListener('click', e=>{ if(e.target.id==='helpOverlay') e.target.classList.remove('open'); });
 
+/* ---------------- clear plate ---------------- */
+$('clearBtn').onclick=()=>$('clearOverlay').classList.add('open');
+$('clearCancelBtn').onclick=()=>$('clearOverlay').classList.remove('open');
+$('clearOverlay').addEventListener('click', e=>{ if(e.target.id==='clearOverlay') e.target.classList.remove('open'); });
+$('clearConfirmBtn').onclick=()=>{
+  $('clearOverlay').classList.remove('open');
+  clearAll();
+  undoStack.length=0; redoStack.length=0;
+  updateUndoButtons();
+  try{ localStorage.removeItem(LS_KEY); }catch(e){}
+  setSaveStatus('saved');
+  refreshAll();
+  tip('Build plate cleared — <b>start fresh!</b>');
+};
+
 /* ---------------- animation loop ---------------- */
 function easeOutBack(t){ const c=1.70158; return 1+(c+1)*Math.pow(t-1,3)+c*Math.pow(t-1,2); }
 function loop(){
@@ -1085,10 +1179,14 @@ function loop(){
 
 /* ---------------- boot ---------------- */
 (function start(){
-  const o=addObject('box',{name:'Starter box', color:'#4ecdc4', pos:{x:0,y:10,z:0}});
-  select(o.id);
-  refreshAll();
-  pushUndo();
+  const restored = loadAutosave();
+  if(!restored){
+    const o=addObject('box',{name:'Starter box', color:'#4ecdc4', pos:{x:0,y:10,z:0}});
+    select(o.id);
+    refreshAll();
+    pushUndo();
+  }
+  setSaveStatus('saved');
   loop();
 })();
 
