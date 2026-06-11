@@ -158,6 +158,37 @@
   .row-btns .btn.danger:hover{background:rgba(255,90,90,.18); border-color:#ff5a5a;}
   .unit-suffix{color:var(--accent-2); font-weight:700;}
 
+  /* ---------- Uniform scale toggle ---------- */
+  .scale-row{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 14px 10px; gap:8px;
+  }
+  .scale-row label{font-size:.72rem; color:var(--ink-dim); font-weight:700; letter-spacing:.04em; cursor:pointer; display:flex; align-items:center; gap:7px; user-select:none;}
+  .toggle{
+    position:relative; width:34px; height:18px; flex:none;
+  }
+  .toggle input{ opacity:0; width:0; height:0; position:absolute; }
+  .toggle-track{
+    position:absolute; inset:0; background:var(--panel-2); border:1px solid var(--line);
+    border-radius:999px; transition:background .18s, border-color .18s; cursor:pointer;
+  }
+  .toggle input:checked ~ .toggle-track{ background:var(--accent-2); border-color:var(--accent-2); }
+  .toggle-thumb{
+    position:absolute; top:2px; left:2px; width:12px; height:12px;
+    background:#fff; border-radius:50%; transition:transform .18s; pointer-events:none;
+  }
+  .toggle input:checked ~ .toggle-thumb{ transform:translateX(16px); }
+
+  /* ---------- Import drop zone (viewport hint) ---------- */
+  #dropZone{
+    position:absolute; inset:8px; border:2.5px dashed var(--accent-2); border-radius:16px;
+    display:none; align-items:center; justify-content:center; flex-direction:column; gap:10px;
+    background:rgba(23,26,35,.82); backdrop-filter:blur(4px); pointer-events:none; z-index:20;
+    color:var(--accent-2); font-weight:700; font-size:1.05rem;
+  }
+  #dropZone.active{ display:flex; }
+  #dropZone small{ font-weight:400; color:var(--ink-dim); font-size:.82rem; }
+
   /* ---------- Footer ---------- */
   footer{
     grid-area:foot; display:flex; align-items:center; gap:16px; padding:0 14px;
@@ -243,10 +274,12 @@
   <div class="spacer"></div>
 
   <button class="btn" id="helpBtn" title="Shortcuts &amp; help">？ Help</button>
+  <button class="btn" id="importModelBtn" title="Import a 3D model (STL, OBJ, PLY)" style="color:var(--accent-2);">⬆ Import</button>
   <button class="btn" id="clearBtn" title="Clear the entire build plate" style="color:#ff8276;">🗑 Clear</button>
   <button class="btn" id="openBtn" title="Open a saved project">📂 Open</button>
   <button class="btn" id="saveBtn" title="Save project file">💾 Save</button>
   <input type="file" id="openInput" accept=".json,.shapeforge" style="display:none">
+  <input type="file" id="importInput" accept=".stl,.obj,.ply" style="display:none">
 
   <div class="menu-wrap">
     <button class="btn primary" id="exportBtn">⬇ Export ▾</button>
@@ -271,6 +304,7 @@
 
 <main id="viewportWrap">
   <canvas id="c"></canvas>
+  <div id="dropZone"><span>📦 Drop 3D model here</span><small>STL · OBJ · PLY</small></div>
   <div class="viewcube">
     <button class="btn" data-view="iso" title="Isometric view">⬡ Iso</button>
     <button class="btn" data-view="top" title="Top view">⬒ Top</button>
@@ -293,6 +327,17 @@
     <div class="swatches" id="swatches"></div>
 
     <div class="panel-title">Size <span class="unit-suffix" id="unitTag1">mm</span></div>
+    <div class="scale-row">
+      <label for="uniformScaleChk">
+        <span class="toggle">
+          <input type="checkbox" id="uniformScaleChk" checked>
+          <span class="toggle-track"></span>
+          <span class="toggle-thumb"></span>
+        </span>
+        UNIFORM SCALE
+      </label>
+      <span style="color:var(--ink-dim);font-size:.72rem;" id="scaleHint">⛓ Locked</span>
+    </div>
     <div class="trio spaced">
       <div class="num"><em>Width</em><input id="f_w" inputmode="decimal"></div>
       <div class="num"><em>Depth</em><input id="f_d" inputmode="decimal"></div>
@@ -402,6 +447,7 @@ const LS_KEY = 'shapeforge_autosave';
 
 let unit = 'mm';
 let snap = 1;                 // mm, 0 = off
+let uniformScale = true;      // lock W/D/H together when resizing
 let objects = [];             // {id,type,name,color,dims{w,d,h},pos{x,y,z},rot{x,y,z}}  pos.y = centre height
 let meshes = {};              // id -> THREE.Mesh
 let selectedId = null;
@@ -625,8 +671,21 @@ function commitField(key){
   if(['w','d','h'].includes(key)){
     const v = num(fields[key]); if(v===null||v<=0){ refreshInspector(); return; }
     const mm = Math.max(0.1, fromUnit(v));
-    if(key==='h'){ const bottom = o.pos.y - o.dims.h/2; o.dims.h = mm; o.pos.y = bottom + mm/2; }
-    else o.dims[key] = mm;
+    if(uniformScale){
+      // compute ratio from old value to new
+      const oldMm = o.dims[key];
+      const ratio = oldMm > 0 ? mm / oldMm : 1;
+      const oldH = o.dims.h;
+      o.dims.w = Math.max(0.1, o.dims.w * ratio);
+      o.dims.d = Math.max(0.1, o.dims.d * ratio);
+      o.dims.h = Math.max(0.1, oldH * ratio);
+      // keep bottom pinned for height change
+      const bottom = o.pos.y - oldH/2;
+      o.pos.y = bottom + o.dims.h/2;
+    } else {
+      if(key==='h'){ const bottom = o.pos.y - o.dims.h/2; o.dims.h = mm; o.pos.y = bottom + mm/2; }
+      else o.dims[key] = mm;
+    }
   }
   if(key==='x'||key==='y'){
     const v = num(fields[key]); if(v===null){ refreshInspector(); return; }
@@ -1176,6 +1235,247 @@ function loop(){
   renderer.render(scene,camera);
   requestAnimationFrame(loop);
 }
+
+/* ---------------- uniform scale toggle ---------------- */
+const uniformChk = $('uniformScaleChk');
+const scaleHint  = $('scaleHint');
+uniformChk.addEventListener('change', ()=>{
+  uniformScale = uniformChk.checked;
+  scaleHint.textContent = uniformScale ? '⛓ Locked' : '⛓\u20E0 Free';
+  scaleHint.style.color = uniformScale ? 'var(--ink-dim)' : 'var(--accent)';
+});
+
+/* ================================================================
+   3D MODEL IMPORT  — STL (binary + ASCII), OBJ, PLY (ASCII)
+================================================================ */
+
+// ---- geometry helpers ----
+function normalizeImported(geo){
+  geo.computeBoundingBox();
+  const box = geo.boundingBox;
+  const size = new THREE.Vector3(); box.getSize(size);
+  const center = new THREE.Vector3(); box.getCenter(center);
+  // translate so bottom sits at y=0, centre on xz
+  geo.translate(-center.x, -box.min.y, -center.z);
+  return { geo, size };
+}
+
+// ---- STL parser (binary + ASCII) ----
+function parseSTL(buffer){
+  const isAscii = (()=>{
+    const u8 = new Uint8Array(buffer, 0, Math.min(256, buffer.byteLength));
+    for(let i=80; i<u8.length; i++) if(u8[i]>127) return false;
+    return /solid/i.test(new TextDecoder().decode(u8));
+  })();
+
+  const geo = new THREE.BufferGeometry();
+  let verts;
+
+  if(!isAscii){
+    // binary STL
+    const dv = new DataView(buffer);
+    const tris = dv.getUint32(80, true);
+    verts = new Float32Array(tris * 9);
+    let off = 84, vi = 0;
+    for(let t=0; t<tris; t++){
+      off += 12; // skip normal
+      for(let v=0; v<3; v++){
+        verts[vi++] = dv.getFloat32(off,true); off+=4;
+        verts[vi++] = dv.getFloat32(off,true); off+=4;
+        verts[vi++] = dv.getFloat32(off,true); off+=4;
+      }
+      off += 2; // attr
+    }
+  } else {
+    // ASCII STL — collect vertex lines
+    const txt = new TextDecoder().decode(buffer);
+    const tmp = [];
+    for(const ln of txt.split('\n')){
+      const t = ln.trim();
+      if(t.startsWith('vertex')){
+        const p = t.split(/\s+/);
+        tmp.push(parseFloat(p[1]), parseFloat(p[2]), parseFloat(p[3]));
+      }
+    }
+    verts = new Float32Array(tmp);
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+  geo.computeVertexNormals();
+  return geo;
+}
+
+// ---- OBJ parser (positions + faces only) ----
+function parseOBJ(text){
+  const positions = [], finalVerts = [];
+  for(const rawLine of text.split('\n')){
+    const ln = rawLine.trim();
+    if(ln.startsWith('v ')){
+      const p = ln.split(/\s+/);
+      positions.push(parseFloat(p[1]), parseFloat(p[2]), parseFloat(p[3]));
+    } else if(ln.startsWith('f ')){
+      const tokens = ln.split(/\s+/).slice(1);
+      // triangulate fan (handles quads and ngons)
+      const idxs = tokens.map(t => (parseInt(t.split('/')[0]) - 1) * 3);
+      for(let i=1; i<idxs.length-1; i++){
+        finalVerts.push(
+          positions[idxs[0]], positions[idxs[0]+1], positions[idxs[0]+2],
+          positions[idxs[i]], positions[idxs[i]+1], positions[idxs[i]+2],
+          positions[idxs[i+1]], positions[idxs[i+1]+1], positions[idxs[i+1]+2]
+        );
+      }
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(finalVerts), 3));
+  geo.computeVertexNormals();
+  return geo;
+}
+
+// ---- PLY parser (ASCII only — binary PLY is rare in practice) ----
+function parsePLY(text){
+  const lines = text.split('\n');
+  let inHeader=true, vertCount=0, faceCount=0;
+  let propNames=[], propStart=0;
+  for(let i=0; i<lines.length; i++){
+    const ln = lines[i].trim();
+    if(inHeader){
+      if(ln.startsWith('element vertex')) vertCount = parseInt(ln.split(' ')[2]);
+      if(ln.startsWith('element face'))  faceCount  = parseInt(ln.split(' ')[2]);
+      if(ln.startsWith('property float') || ln.startsWith('property double'))
+        propNames.push(ln.split(/\s+/).pop());
+      if(ln==='end_header'){ inHeader=false; propStart=i+1; }
+    }
+  }
+  const xi=propNames.indexOf('x'), yi=propNames.indexOf('y'), zi=propNames.indexOf('z');
+  const verts=[], faces=[];
+  for(let i=propStart; i<propStart+vertCount; i++){
+    const p = lines[i].trim().split(/\s+/);
+    verts.push(parseFloat(p[xi]), parseFloat(p[yi]), parseFloat(p[zi]));
+  }
+  const finalVerts = [];
+  for(let i=propStart+vertCount; i<propStart+vertCount+faceCount; i++){
+    const p = lines[i].trim().split(/\s+/).map(Number);
+    const n = p[0];
+    for(let j=1; j<n-1; j++){
+      for(const idx of [p[1],p[j],p[j+1]])
+        finalVerts.push(verts[idx*3], verts[idx*3+1], verts[idx*3+2]);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(finalVerts), 3));
+  geo.computeVertexNormals();
+  return geo;
+}
+
+// ---- add imported mesh to the scene ----
+function addImportedMesh(geo, name){
+  const { geo: g, size } = normalizeImported(geo);
+
+  // target max dimension = 60mm for a nice first appearance
+  const maxDim = Math.max(size.x, size.y, size.z) || 1;
+  const scaleFactor = 60 / maxDim;
+
+  const color = CANDY[objects.length % CANDY.length];
+  const mat = new THREE.MeshStandardMaterial({color, roughness:0.5, metalness:0.05, side:THREE.DoubleSide});
+  const mesh = new THREE.Mesh(g, mat);
+  mesh.castShadow = true; mesh.receiveShadow = true;
+
+  const id = 'o'+(idCounter++);
+  const slot = objects.length % 6, ring = Math.floor(objects.length/6);
+  const px = (slot-2.5)*70, pz = (ring-0.5)*70;
+
+  // Store as a custom 'imported' object — dims track the applied scale in mm
+  const w = size.x * scaleFactor, h = size.y * scaleFactor, d = size.z * scaleFactor;
+  const o = {
+    id, type:'imported', name: name.replace(/\.[^.]+$/, ''),
+    color, dims:{w, d, h},
+    pos:{x:px, y:h/2, z:pz},
+    rot:{x:0,y:0,z:0},
+    importedGeo: true  // flag — geometry stored directly on mesh, not in geoCache
+  };
+  objects.push(o);
+
+  mesh.scale.set(w, h, d);
+  mesh.position.set(o.pos.x, o.pos.y, o.pos.z);
+  mesh.userData.id = id;
+  meshes[id] = mesh;
+  scene.add(mesh);
+  select(id); refreshAll(); pushUndo();
+  tip(`Imported <b>${o.name}</b> — scaled to fit (${Math.round(w)}×${Math.round(h)} mm)`);
+}
+
+// override syncMesh to handle imported objects (they use DoubleSide and don't need geoCache)
+{
+  const _origSync = syncMesh;
+  syncMesh = function(o){
+    if(o.type==='imported'){
+      const m=meshes[o.id]; if(!m) return;
+      m.position.set(o.pos.x, o.pos.y, o.pos.z);
+      m.rotation.set(THREE.MathUtils.degToRad(o.rot.x), THREE.MathUtils.degToRad(o.rot.y), THREE.MathUtils.degToRad(o.rot.z));
+      if(!m.userData.spawn) m.scale.set(o.dims.w, o.dims.h, o.dims.d);
+      m.material.color.set(o.color);
+    } else {
+      _origSync(o);
+    }
+  };
+}
+
+// override restore to handle imported objects (they can't be reconstructed from type alone)
+// imported objects won't survive a project save/restore but that's fine
+{
+  const _origRestore = restore;
+  restore = function(json){
+    // filter out any imported objects that can't be reconstructed
+    const arr = JSON.parse(json).filter(o => o.type !== 'imported' || !o.importedGeo);
+    _origRestore(JSON.stringify(arr));
+  };
+}
+
+// ---- file reading ----
+function readAndImport(file){
+  const ext = file.name.split('.').pop().toLowerCase();
+  if(!['stl','obj','ply'].includes(ext)){
+    tip(`Can't import <b>.${ext}</b> — supported formats are STL, OBJ, PLY`); return;
+  }
+  tip(`Loading <b>${file.name}</b>…`);
+  const reader = new FileReader();
+  if(ext==='stl'){
+    reader.onload = e => {
+      try{ const geo=parseSTL(e.target.result); addImportedMesh(geo, file.name); }
+      catch(err){ tip(`Failed to parse STL: ${err.message}`); console.error(err); }
+    };
+    reader.readAsArrayBuffer(file);
+  } else {
+    reader.onload = e => {
+      try{
+        const geo = ext==='obj' ? parseOBJ(e.target.result) : parsePLY(e.target.result);
+        addImportedMesh(geo, file.name);
+      }catch(err){ tip(`Failed to parse ${ext.toUpperCase()}: ${err.message}`); console.error(err); }
+    };
+    reader.readAsText(file);
+  }
+}
+
+// ---- button ----
+$('importModelBtn').onclick = () => $('importInput').click();
+$('importInput').addEventListener('change', e=>{
+  const file = e.target.files[0]; if(!file) return;
+  readAndImport(file);
+  e.target.value = '';
+});
+
+// ---- drag-and-drop onto viewport ----
+const dropZone = $('dropZone');
+const viewport = document.getElementById('viewportWrap');
+let dragCounter = 0;
+viewport.addEventListener('dragenter', e=>{ e.preventDefault(); dragCounter++; dropZone.classList.add('active'); });
+viewport.addEventListener('dragleave', e=>{ dragCounter--; if(dragCounter<=0){ dragCounter=0; dropZone.classList.remove('active'); } });
+viewport.addEventListener('dragover',  e=>{ e.preventDefault(); });
+viewport.addEventListener('drop', e=>{
+  e.preventDefault(); dragCounter=0; dropZone.classList.remove('active');
+  const file = e.dataTransfer.files[0]; if(!file) return;
+  readAndImport(file);
+});
 
 /* ---------------- boot ---------------- */
 (function start(){
