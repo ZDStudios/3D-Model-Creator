@@ -1,0 +1,1099 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ShapeForge — 3D Model Maker</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='4' y='10' width='14' height='14' rx='3' fill='%23ff6b5e'/><circle cx='22' cy='12' r='8' fill='%234ecdc4'/></svg>">
+<style>
+  :root{
+    --bg:#171a23;
+    --panel:#1f2330;
+    --panel-2:#262b3b;
+    --line:#323950;
+    --ink:#eef0f7;
+    --ink-dim:#9aa3bd;
+    --accent:#ff6b5e;
+    --accent-2:#4ecdc4;
+    --gold:#ffd166;
+    --radius:12px;
+    font-size:15px;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{height:100%; overflow:hidden;}
+  body{
+    font-family:ui-rounded,"SF Pro Rounded","Segoe UI",system-ui,-apple-system,sans-serif;
+    background:var(--bg); color:var(--ink);
+    display:grid;
+    grid-template-columns:208px 1fr 248px;
+    grid-template-rows:52px 1fr 30px;
+    grid-template-areas:
+      "top top top"
+      "left view right"
+      "foot foot foot";
+  }
+
+  /* ---------- Top bar ---------- */
+  header{
+    grid-area:top; display:flex; align-items:center; gap:10px;
+    padding:0 14px; background:var(--panel); border-bottom:1px solid var(--line);
+  }
+  .logo{display:flex; align-items:center; gap:8px; font-weight:800; letter-spacing:.3px; margin-right:6px; user-select:none;}
+  .logo .cube{width:22px;height:22px;border-radius:6px;background:conic-gradient(from 220deg,var(--accent),var(--gold),var(--accent-2),var(--accent));box-shadow:0 0 12px rgba(255,107,94,.45);}
+  .logo small{color:var(--ink-dim); font-weight:600;}
+  .spacer{flex:1;}
+  .tgroup{display:flex; align-items:center; gap:4px; background:var(--panel-2); border:1px solid var(--line); border-radius:10px; padding:3px;}
+  button,select,input{font:inherit; color:inherit;}
+  .btn{
+    background:transparent; border:none; border-radius:8px; padding:6px 10px;
+    color:var(--ink); cursor:pointer; line-height:1; white-space:nowrap;
+  }
+  .btn:hover{background:rgba(255,255,255,.08);}
+  .btn:active{transform:translateY(1px);}
+  .btn.primary{background:var(--accent); color:#23110f; font-weight:700;}
+  .btn.primary:hover{background:#ff8276;}
+  .btn:disabled{opacity:.35; cursor:default;}
+  .btn:disabled:hover{background:transparent;}
+  select.ctl{
+    background:var(--panel-2); border:1px solid var(--line); border-radius:8px;
+    padding:5px 8px; cursor:pointer; outline:none;
+  }
+  .lab{color:var(--ink-dim); font-size:.8rem; margin-right:-4px;}
+  .menu-wrap{position:relative;}
+  .menu{
+    position:absolute; top:calc(100% + 6px); right:0; min-width:190px; z-index:50;
+    background:var(--panel-2); border:1px solid var(--line); border-radius:10px;
+    box-shadow:0 12px 30px rgba(0,0,0,.45); padding:5px; display:none;
+  }
+  .menu.open{display:block;}
+  .menu .btn{display:block; width:100%; text-align:left; padding:8px 10px;}
+  .menu .sep{height:1px; background:var(--line); margin:5px 4px;}
+  .menu .hint{display:block; color:var(--ink-dim); font-size:.72rem; padding:2px 10px 6px;}
+
+  /* ---------- Left palette ---------- */
+  aside.left{
+    grid-area:left; background:var(--panel); border-right:1px solid var(--line);
+    display:flex; flex-direction:column; min-height:0;
+  }
+  .panel-title{
+    font-size:.72rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--ink-dim); padding:12px 14px 8px;
+  }
+  .shape-grid{
+    display:grid; grid-template-columns:1fr 1fr; gap:8px; padding:0 12px 12px;
+  }
+  .shape{
+    background:var(--panel-2); border:1px solid var(--line); border-radius:var(--radius);
+    padding:8px 4px 6px; cursor:pointer; text-align:center; user-select:none;
+    transition:transform .12s ease, border-color .12s ease, box-shadow .12s ease;
+  }
+  .shape:hover{transform:translateY(-2px); border-color:var(--accent); box-shadow:0 6px 16px rgba(0,0,0,.35);}
+  .shape:active{transform:scale(.96);}
+  .shape svg{width:42px; height:38px; display:block; margin:0 auto 2px;}
+  .shape span{font-size:.72rem; color:var(--ink-dim); font-weight:600;}
+  .objlist{flex:1; overflow:auto; padding:0 12px 12px; min-height:0;}
+  .objrow{
+    display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:8px;
+    cursor:pointer; font-size:.82rem; color:var(--ink-dim);
+  }
+  .objrow:hover{background:rgba(255,255,255,.06);}
+  .objrow.sel{background:rgba(255,107,94,.16); color:var(--ink);}
+  .objrow .dot{width:10px; height:10px; border-radius:3px; flex:none;}
+  .objrow .nm{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .empty-note{color:var(--ink-dim); font-size:.78rem; padding:4px 10px;}
+
+  /* ---------- Viewport ---------- */
+  main{grid-area:view; position:relative; min-width:0; min-height:0;
+    background:
+      radial-gradient(1200px 700px at 50% -10%, #ffffff 0%, #eef2f8 45%, #dde5f0 100%);
+  }
+  canvas{display:block; width:100%; height:100%; touch-action:none; outline:none;}
+  .viewcube{
+    position:absolute; top:12px; right:12px; display:flex; gap:6px;
+  }
+  .viewcube .btn{background:rgba(23,26,35,.78); backdrop-filter:blur(4px); font-size:.78rem; border:1px solid var(--line);}
+  .viewcube .btn:hover{background:rgba(23,26,35,.95);}
+  .tipbar{
+    position:absolute; left:50%; bottom:14px; transform:translateX(-50%);
+    background:rgba(23,26,35,.82); border:1px solid var(--line); color:var(--ink-dim);
+    font-size:.78rem; padding:6px 14px; border-radius:999px; pointer-events:none;
+    backdrop-filter:blur(4px); white-space:nowrap; max-width:92%; overflow:hidden; text-overflow:ellipsis;
+  }
+  .tipbar b{color:var(--gold); font-weight:700;}
+
+  /* ---------- Right inspector ---------- */
+  aside.right{
+    grid-area:right; background:var(--panel); border-left:1px solid var(--line);
+    overflow:auto; min-height:0;
+  }
+  .insp-empty{color:var(--ink-dim); font-size:.82rem; padding:8px 14px; line-height:1.5;}
+  .insp{display:none; padding-bottom:16px;}
+  .insp.show{display:block;}
+  .field{padding:4px 14px 8px;}
+  .field label{display:block; font-size:.72rem; color:var(--ink-dim); font-weight:700; margin-bottom:4px; letter-spacing:.04em;}
+  .field input[type=text]{
+    width:100%; background:var(--panel-2); border:1px solid var(--line); border-radius:8px;
+    padding:7px 9px; outline:none;
+  }
+  .field input[type=text]:focus{border-color:var(--accent-2);}
+  .trio{display:grid; grid-template-columns:repeat(3,1fr); gap:6px; padding:0 14px 8px;}
+  .num{position:relative;}
+  .num em{
+    position:absolute; top:-15px; left:4px; font-style:normal; font-size:.68rem; color:var(--ink-dim); font-weight:700;
+  }
+  .num input{
+    width:100%; background:var(--panel-2); border:1px solid var(--line); border-radius:8px;
+    padding:7px 6px; outline:none; text-align:center; font-variant-numeric:tabular-nums;
+  }
+  .num input:focus{border-color:var(--accent);}
+  .trio.spaced{margin-top:16px;}
+  .swatches{display:grid; grid-template-columns:repeat(6,1fr); gap:6px; padding:0 14px 8px;}
+  .sw{width:100%; aspect-ratio:1; border-radius:8px; border:2px solid transparent; cursor:pointer;}
+  .sw:hover{transform:scale(1.08);}
+  .sw.on{border-color:#fff;}
+  .sw.custom{display:flex; align-items:center; justify-content:center; background:var(--panel-2); border:1px dashed var(--line); color:var(--ink-dim); font-weight:800;}
+  .sw.custom input{position:absolute; width:0; height:0; opacity:0;}
+  .row-btns{display:grid; grid-template-columns:1fr 1fr; gap:6px; padding:6px 14px;}
+  .row-btns .btn{background:var(--panel-2); border:1px solid var(--line); text-align:center; font-size:.82rem;}
+  .row-btns .btn.danger:hover{background:rgba(255,90,90,.18); border-color:#ff5a5a;}
+  .unit-suffix{color:var(--accent-2); font-weight:700;}
+
+  /* ---------- Footer ---------- */
+  footer{
+    grid-area:foot; display:flex; align-items:center; gap:16px; padding:0 14px;
+    background:var(--panel); border-top:1px solid var(--line);
+    font-size:.74rem; color:var(--ink-dim);
+  }
+  footer .k{color:var(--ink);}
+
+  /* ---------- Help overlay ---------- */
+  .overlay{
+    position:fixed; inset:0; background:rgba(10,12,18,.6); backdrop-filter:blur(3px);
+    display:none; align-items:center; justify-content:center; z-index:100;
+  }
+  .overlay.open{display:flex;}
+  .card{
+    width:min(520px, 92vw); background:var(--panel); border:1px solid var(--line);
+    border-radius:16px; padding:22px 24px; box-shadow:0 24px 60px rgba(0,0,0,.5);
+  }
+  .card h2{font-size:1.05rem; margin-bottom:12px;}
+  .card table{width:100%; border-collapse:collapse; font-size:.84rem;}
+  .card td{padding:5px 0; color:var(--ink-dim);}
+  .card td:first-child{width:46%;}
+  kbd{
+    background:var(--panel-2); border:1px solid var(--line); border-bottom-width:2px;
+    border-radius:6px; padding:2px 7px; font-family:inherit; font-size:.78rem; color:var(--ink);
+  }
+  .card .btn.primary{margin-top:14px; width:100%; padding:9px;}
+
+  @media (max-width:900px){
+    body{grid-template-columns:170px 1fr 200px;}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo"><div class="cube"></div>ShapeForge <small>3D maker</small></div>
+
+  <div class="tgroup">
+    <button class="btn" id="undoBtn" title="Undo (Ctrl+Z)">↶ Undo</button>
+    <button class="btn" id="redoBtn" title="Redo (Ctrl+Y)">↷ Redo</button>
+  </div>
+
+  <div class="tgroup">
+    <span class="lab" style="margin-left:6px">Units</span>
+    <select class="ctl" id="unitSel" title="Measurement units">
+      <option value="mm" selected>mm</option>
+      <option value="cm">cm</option>
+      <option value="m">m</option>
+      <option value="in">inches</option>
+      <option value="ft">feet</option>
+    </select>
+    <span class="lab" style="margin-left:6px">Snap</span>
+    <select class="ctl" id="snapSel" title="Grid snapping">
+      <option value="0">off</option>
+      <option value="0.5">0.5 mm</option>
+      <option value="1" selected>1 mm</option>
+      <option value="5">5 mm</option>
+      <option value="10">10 mm</option>
+    </select>
+  </div>
+
+  <div class="spacer"></div>
+
+  <button class="btn" id="helpBtn" title="Shortcuts &amp; help">？ Help</button>
+  <button class="btn" id="openBtn" title="Open a saved project">📂 Open</button>
+  <button class="btn" id="saveBtn" title="Save project file">💾 Save</button>
+  <input type="file" id="openInput" accept=".json,.shapeforge" style="display:none">
+
+  <div class="menu-wrap">
+    <button class="btn primary" id="exportBtn">⬇ Export ▾</button>
+    <div class="menu" id="exportMenu">
+      <span class="hint">3D print &amp; modeling formats</span>
+      <button class="btn" data-fmt="stl">STL <small style="color:var(--ink-dim)">(binary, printers)</small></button>
+      <button class="btn" data-fmt="3mf">3MF <small style="color:var(--ink-dim)">(modern print format)</small></button>
+      <button class="btn" data-fmt="obj">OBJ <small style="color:var(--ink-dim)">(universal mesh)</small></button>
+      <button class="btn" data-fmt="ply">PLY <small style="color:var(--ink-dim)">(point/mesh data)</small></button>
+      <div class="sep"></div>
+      <button class="btn" data-fmt="json">Project file <small style="color:var(--ink-dim)">(.json)</small></button>
+    </div>
+  </div>
+</header>
+
+<aside class="left">
+  <div class="panel-title">Shapes — click to add</div>
+  <div class="shape-grid" id="shapeGrid"></div>
+  <div class="panel-title">Objects</div>
+  <div class="objlist" id="objList"><div class="empty-note">Nothing here yet — add a shape!</div></div>
+</aside>
+
+<main id="viewportWrap">
+  <canvas id="c"></canvas>
+  <div class="viewcube">
+    <button class="btn" data-view="iso" title="Isometric view">⬡ Iso</button>
+    <button class="btn" data-view="top" title="Top view">⬒ Top</button>
+    <button class="btn" data-view="front" title="Front view">▣ Front</button>
+    <button class="btn" data-view="fit" title="Fit everything in view">⛶ Fit</button>
+  </div>
+  <div class="tipbar" id="tipbar">Click a shape on the left to get started — drag shapes to move them, scroll to zoom</div>
+</main>
+
+<aside class="right">
+  <div class="panel-title">Inspector</div>
+  <div class="insp-empty" id="inspEmpty">Select a shape to edit its size, position, rotation and colour.</div>
+  <div class="insp" id="insp">
+    <div class="field">
+      <label>NAME</label>
+      <input type="text" id="f_name" spellcheck="false">
+    </div>
+
+    <div class="panel-title">Colour</div>
+    <div class="swatches" id="swatches"></div>
+
+    <div class="panel-title">Size <span class="unit-suffix" id="unitTag1">mm</span></div>
+    <div class="trio spaced">
+      <div class="num"><em>Width</em><input id="f_w" inputmode="decimal"></div>
+      <div class="num"><em>Depth</em><input id="f_d" inputmode="decimal"></div>
+      <div class="num"><em>Height</em><input id="f_h" inputmode="decimal"></div>
+    </div>
+
+    <div class="panel-title">Position <span class="unit-suffix" id="unitTag2">mm</span></div>
+    <div class="trio spaced">
+      <div class="num"><em>X</em><input id="f_x" inputmode="decimal"></div>
+      <div class="num"><em>Y</em><input id="f_y" inputmode="decimal"></div>
+      <div class="num"><em>Lift</em><input id="f_e" inputmode="decimal"></div>
+    </div>
+
+    <div class="panel-title">Rotation (degrees)</div>
+    <div class="trio spaced">
+      <div class="num"><em>Tilt X</em><input id="f_rx" inputmode="decimal"></div>
+      <div class="num"><em>Spin</em><input id="f_ry" inputmode="decimal"></div>
+      <div class="num"><em>Tilt Z</em><input id="f_rz" inputmode="decimal"></div>
+    </div>
+    <div class="row-btns">
+      <button class="btn" id="rotBtn" title="Spin 45° (R)">↻ Spin 45°</button>
+      <button class="btn" id="dropBtn" title="Drop onto the workplane (D)">⤓ Drop to plane</button>
+    </div>
+    <div class="row-btns">
+      <button class="btn" id="dupBtn" title="Duplicate (Ctrl+D)">⧉ Duplicate</button>
+      <button class="btn danger" id="delBtn" title="Delete (Del)">🗑 Delete</button>
+    </div>
+  </div>
+</aside>
+
+<footer>
+  <span>Objects: <span class="k" id="statCount">0</span></span>
+  <span>Units: <span class="k" id="statUnit">mm</span></span>
+  <span>Snap: <span class="k" id="statSnap">1 mm</span></span>
+  <span style="margin-left:auto">Drag = move · Ctrl+drag = lift · Right-drag = pan · Scroll = zoom</span>
+</footer>
+
+<div class="overlay" id="helpOverlay">
+  <div class="card">
+    <h2>🛠 ShapeForge — shortcuts</h2>
+    <table>
+      <tr><td>Move shape</td><td><kbd>drag</kbd> or <kbd>arrow keys</kbd></td></tr>
+      <tr><td>Lift / lower shape</td><td><kbd>Ctrl</kbd> + <kbd>drag</kbd> or <kbd>PgUp/PgDn</kbd></td></tr>
+      <tr><td>Orbit camera</td><td><kbd>drag</kbd> empty space</td></tr>
+      <tr><td>Pan camera</td><td><kbd>right-drag</kbd> or <kbd>Shift</kbd>+<kbd>drag</kbd></td></tr>
+      <tr><td>Zoom</td><td><kbd>scroll wheel</kbd></td></tr>
+      <tr><td>Spin shape 45°</td><td><kbd>R</kbd></td></tr>
+      <tr><td>Drop to workplane</td><td><kbd>D</kbd></td></tr>
+      <tr><td>Duplicate</td><td><kbd>Ctrl</kbd>+<kbd>D</kbd></td></tr>
+      <tr><td>Delete</td><td><kbd>Delete</kbd></td></tr>
+      <tr><td>Undo / Redo</td><td><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd></td></tr>
+    </table>
+    <button class="btn primary" id="helpClose">Got it — let's build!</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* =====================================================================
+   ShapeForge — a tiny, friendly 3D model maker
+   Scene units are millimetres. Y is "up" on screen; exports convert to
+   Z-up (the convention slicers and CAD tools expect).
+===================================================================== */
+(function(){
+'use strict';
+
+/* ---------------- constants & state ---------------- */
+const UNITS = { mm:{f:1,dp:1,label:'mm'}, cm:{f:10,dp:2,label:'cm'}, m:{f:1000,dp:4,label:'m'},
+                in:{f:25.4,dp:3,label:'in'}, ft:{f:304.8,dp:4,label:'ft'} };
+const CANDY = ['#ff6b5e','#ff9f43','#ffd166','#9ccc3c','#4ecdc4','#45aaf2',
+               '#5f6cf7','#a55eea','#fd79a8','#8d6e63','#c8d0e0','#3d4456'];
+const SHAPES = [
+  {type:'box',      name:'Box'},
+  {type:'cylinder', name:'Cylinder'},
+  {type:'sphere',   name:'Sphere'},
+  {type:'dome',     name:'Dome'},
+  {type:'cone',     name:'Cone'},
+  {type:'pyramid',  name:'Pyramid'},
+  {type:'wedge',    name:'Wedge'},
+  {type:'torus',    name:'Donut'},
+  {type:'tube',     name:'Tube'},
+  {type:'star',     name:'Star'},
+  {type:'heart',    name:'Heart'},
+  {type:'gem',      name:'Gem'},
+];
+const TIPS = [
+  'Tip: <b>Ctrl+drag</b> a shape to lift it off the workplane',
+  'Tip: press <b>R</b> to spin the selected shape 45°',
+  'Tip: press <b>D</b> to drop a floating shape back onto the plane',
+  'Tip: <b>Ctrl+D</b> duplicates — great for repeating patterns',
+  'Tip: switch units up top — sizes convert automatically',
+  'Tip: export <b>STL</b> or <b>3MF</b> and send it straight to your slicer',
+  'Tip: use <b>arrow keys</b> to nudge a shape by one snap step',
+  'Tip: <b>Save</b> writes a project file you can re-open and keep editing',
+];
+
+let unit = 'mm';
+let snap = 1;                 // mm, 0 = off
+let objects = [];             // {id,type,name,color,dims{w,d,h},pos{x,y,z},rot{x,y,z}}  pos.y = centre height
+let meshes = {};              // id -> THREE.Mesh
+let selectedId = null;
+let idCounter = 1;
+let undoStack = [], redoStack = [];
+
+/* ---------------- three.js setup ---------------- */
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, 1, 1, 6000);
+const cam = { theta: Math.PI/4, phi: 1.05, radius: 300, target: new THREE.Vector3(0,12,0) };
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x99a4bb, 0.95));
+const sun = new THREE.DirectionalLight(0xffffff, 0.75);
+sun.position.set(140, 260, 160);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048,2048);
+const sc = sun.shadow.camera;
+sc.left=-220; sc.right=220; sc.top=220; sc.bottom=-220; sc.far=900;
+scene.add(sun);
+
+// workplane
+const plane = new THREE.Mesh(new THREE.PlaneGeometry(224,224),
+  new THREE.MeshBasicMaterial({color:0xcfe0f2}));
+plane.rotation.x = -Math.PI/2; plane.position.y = -0.06; scene.add(plane);
+const planeEdge = new THREE.Mesh(new THREE.PlaneGeometry(232,232),
+  new THREE.MeshBasicMaterial({color:0xaebfd6}));
+planeEdge.rotation.x = -Math.PI/2; planeEdge.position.y = -0.12; scene.add(planeEdge);
+const grid = new THREE.GridHelper(220, 22, 0x7fa0c7, 0xa8c0dd);
+grid.position.y = 0.02; scene.add(grid);
+const shadowCatcher = new THREE.Mesh(new THREE.PlaneGeometry(1200,1200),
+  new THREE.ShadowMaterial({opacity:0.16}));
+shadowCatcher.rotation.x = -Math.PI/2; shadowCatcher.receiveShadow = true; scene.add(shadowCatcher);
+
+const selBox = new THREE.Box3Helper(new THREE.Box3(), 0xff6b5e);
+selBox.visible = false; scene.add(selBox);
+
+function updateCamera(){
+  const t = cam.target;
+  camera.position.set(
+    t.x + cam.radius*Math.sin(cam.phi)*Math.sin(cam.theta),
+    t.y + cam.radius*Math.cos(cam.phi),
+    t.z + cam.radius*Math.sin(cam.phi)*Math.cos(cam.theta));
+  camera.lookAt(t);
+}
+function resize(){
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (canvas.width !== Math.floor(w*renderer.getPixelRatio()) || canvas.height !== Math.floor(h*renderer.getPixelRatio())){
+    renderer.setSize(w,h,false);
+    camera.aspect = w/h; camera.updateProjectionMatrix();
+  }
+}
+window.addEventListener('resize', resize);
+
+/* ---------------- geometry factory (all unit-sized: -0.5..0.5) ---------------- */
+function normalize(g){
+  g.computeBoundingBox();
+  const b=g.boundingBox, s=new THREE.Vector3(); b.getSize(s);
+  const c=new THREE.Vector3(); b.getCenter(c);
+  g.translate(-c.x,-c.y,-c.z);
+  g.scale(s.x?1/s.x:1, s.y?1/s.y:1, s.z?1/s.z:1);
+  g.computeVertexNormals();
+  return g;
+}
+function wedgeGeo(){
+  const A=[-.5,-.5,-.5],B=[.5,-.5,-.5],C=[.5,-.5,.5],D=[-.5,-.5,.5],E=[-.5,.5,-.5],F=[.5,.5,-.5];
+  const tris=[A,B,C, A,C,D, A,F,B, A,E,F, D,C,F, D,F,E, A,D,E, B,F,C];
+  const pos=new Float32Array(tris.flat());
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos,3));
+  g.computeVertexNormals();
+  return g;
+}
+function starShape(){
+  const s=new THREE.Shape();
+  for(let i=0;i<10;i++){
+    const r=i%2===0?0.5:0.21, a=i*Math.PI/5 - Math.PI/2;
+    const x=Math.cos(a)*r, y=Math.sin(a)*r;
+    i===0?s.moveTo(x,y):s.lineTo(x,y);
+  }
+  s.closePath(); return s;
+}
+function heartShape(){
+  const s=new THREE.Shape(), x=0, y=0;
+  s.moveTo(x+25,y+25);
+  s.bezierCurveTo(x+25,y+25,x+20,y,x,y);
+  s.bezierCurveTo(x-30,y,x-30,y+35,x-30,y+35);
+  s.bezierCurveTo(x-30,y+55,x-10,y+77,x+25,y+95);
+  s.bezierCurveTo(x+60,y+77,x+80,y+55,x+80,y+35);
+  s.bezierCurveTo(x+80,y+35,x+80,y,x+50,y);
+  s.bezierCurveTo(x+35,y,x+25,y+25,x+25,y+25);
+  return s;
+}
+function extrudeFlat(shape){
+  const g=new THREE.ExtrudeGeometry(shape,{depth:1,bevelEnabled:false,curveSegments:24});
+  g.rotateX(-Math.PI/2);
+  return normalize(g);
+}
+function makeGeometry(type){
+  switch(type){
+    case 'box':      return new THREE.BoxGeometry(1,1,1);
+    case 'cylinder': return new THREE.CylinderGeometry(0.5,0.5,1,48);
+    case 'sphere':   return new THREE.SphereGeometry(0.5,40,24);
+    case 'cone':     return new THREE.ConeGeometry(0.5,1,48);
+    case 'pyramid': { const g=new THREE.ConeGeometry(Math.SQRT1_2,1,4); g.rotateY(Math.PI/4); return normalize(g); }
+    case 'wedge':    return wedgeGeo();
+    case 'dome': {
+      const pts=[new THREE.Vector2(0,0)];
+      for(let i=0;i<=24;i++){const a=i/24*Math.PI/2; pts.push(new THREE.Vector2(Math.cos(a)*0.5, Math.sin(a)*0.5));}
+      const g=new THREE.LatheGeometry(pts,48);
+      return normalize(g);
+    }
+    case 'torus': { const g=new THREE.TorusGeometry(0.35,0.15,18,56); g.rotateX(Math.PI/2); return normalize(g); }
+    case 'tube': {
+      const s=new THREE.Shape(); s.absarc(0,0,0.5,0,Math.PI*2,false);
+      const hole=new THREE.Path(); hole.absarc(0,0,0.3,0,Math.PI*2,true);
+      s.holes.push(hole);
+      return extrudeFlat(s);
+    }
+    case 'star':  return extrudeFlat(starShape());
+    case 'heart': return extrudeFlat(heartShape());
+    case 'gem': {
+      const g=new THREE.OctahedronGeometry(0.5,0);
+      return normalize(g);
+    }
+    default: return new THREE.BoxGeometry(1,1,1);
+  }
+}
+const geoCache = {};
+function getGeo(type){ return geoCache[type] || (geoCache[type] = makeGeometry(type)); }
+
+/* ---------------- object management ---------------- */
+function counts(type){ return objects.filter(o=>o.type===type).length; }
+function addObject(type, opts={}){
+  const def = SHAPES.find(s=>s.type===type) || SHAPES[0];
+  const n = counts(type)+1;
+  const i = objects.length;
+  const ring = Math.floor(i/6), slot = i%6;
+  const o = {
+    id: 'o'+(idCounter++),
+    type,
+    name: opts.name || def.name + (n>1?' '+n:''),
+    color: opts.color || CANDY[(i)%10],
+    dims: opts.dims || {w:20,d:20,h:20},
+    pos:  opts.pos  || {x:(slot-2.5)*26, y:10, z:(ring-0.5)*26},
+    rot:  opts.rot  || {x:0,y:0,z:0},
+  };
+  if(!opts.pos) o.pos.y = o.dims.h/2;
+  objects.push(o);
+  const mesh = new THREE.Mesh(getGeo(type),
+    new THREE.MeshStandardMaterial({color:o.color, roughness:0.5, metalness:0.05}));
+  mesh.castShadow = true; mesh.receiveShadow = true;
+  mesh.userData.id = o.id;
+  mesh.userData.spawn = performance.now();
+  meshes[o.id] = mesh;
+  scene.add(mesh);
+  syncMesh(o);
+  return o;
+}
+function syncMesh(o){
+  const m = meshes[o.id]; if(!m) return;
+  m.position.set(o.pos.x, o.pos.y, o.pos.z);
+  m.rotation.set(THREE.MathUtils.degToRad(o.rot.x), THREE.MathUtils.degToRad(o.rot.y), THREE.MathUtils.degToRad(o.rot.z));
+  if(!m.userData.spawn) m.scale.set(o.dims.w, o.dims.h, o.dims.d);
+  m.material.color.set(o.color);
+}
+function removeObject(id){
+  const m = meshes[id];
+  if(m){ scene.remove(m); m.material.dispose(); delete meshes[id]; }
+  objects = objects.filter(o=>o.id!==id);
+  if(selectedId===id) select(null);
+}
+function getObj(id){ return objects.find(o=>o.id===id); }
+function clearAll(){
+  for(const o of [...objects]) removeObject(o.id);
+  objects = []; selectedId = null;
+}
+
+/* ---------------- selection & inspector ---------------- */
+const $ = id => document.getElementById(id);
+const insp = $('insp'), inspEmpty = $('inspEmpty');
+const fields = {name:$('f_name'), w:$('f_w'), d:$('f_d'), h:$('f_h'),
+                x:$('f_x'), y:$('f_y'), e:$('f_e'), rx:$('f_rx'), ry:$('f_ry'), rz:$('f_rz')};
+
+function select(id){
+  selectedId = id;
+  const o = id && getObj(id);
+  insp.classList.toggle('show', !!o);
+  inspEmpty.style.display = o ? 'none' : 'block';
+  selBox.visible = !!o;
+  refreshInspector();
+  refreshObjList();
+}
+function toUnit(mm){ const u=UNITS[unit]; return +( (mm/u.f).toFixed(u.dp) ); }
+function fromUnit(v){ return v * UNITS[unit].f; }
+function elevation(o){
+  const m = meshes[o.id]; if(!m) return 0;
+  const b = new THREE.Box3().setFromObject(m);
+  return b.min.y;
+}
+function refreshInspector(){
+  const o = selectedId && getObj(selectedId); if(!o) return;
+  fields.name.value = o.name;
+  fields.w.value = toUnit(o.dims.w); fields.d.value = toUnit(o.dims.d); fields.h.value = toUnit(o.dims.h);
+  fields.x.value = toUnit(o.pos.x); fields.y.value = toUnit(o.pos.z); fields.e.value = toUnit(elevation(o));
+  fields.rx.value = Math.round(o.rot.x*10)/10; fields.ry.value = Math.round(o.rot.y*10)/10; fields.rz.value = Math.round(o.rot.z*10)/10;
+  document.querySelectorAll('.sw[data-c]').forEach(el=>{
+    el.classList.toggle('on', el.dataset.c.toLowerCase()===o.color.toLowerCase());
+  });
+}
+function commitField(key){
+  const o = selectedId && getObj(selectedId); if(!o) return;
+  const num = f => { const v=parseFloat(String(f.value).replace(',','.')); return isNaN(v)?null:v; };
+  if(key==='name'){ o.name = fields.name.value.trim() || o.name; refreshObjList(); pushUndo(); return; }
+  if(['w','d','h'].includes(key)){
+    const v = num(fields[key]); if(v===null||v<=0){ refreshInspector(); return; }
+    const mm = Math.max(0.1, fromUnit(v));
+    if(key==='h'){ const bottom = o.pos.y - o.dims.h/2; o.dims.h = mm; o.pos.y = bottom + mm/2; }
+    else o.dims[key] = mm;
+  }
+  if(key==='x'||key==='y'){
+    const v = num(fields[key]); if(v===null){ refreshInspector(); return; }
+    if(key==='x') o.pos.x = fromUnit(v); else o.pos.z = fromUnit(v);
+  }
+  if(key==='e'){
+    const v = num(fields.e); if(v===null){ refreshInspector(); return; }
+    const cur = elevation(o);
+    o.pos.y += fromUnit(v) - cur;
+  }
+  if(['rx','ry','rz'].includes(key)){
+    const v = num(fields[key]); if(v===null){ refreshInspector(); return; }
+    o.rot[{rx:'x',ry:'y',rz:'z'}[key]] = v;
+  }
+  syncMesh(o); refreshInspector(); pushUndo();
+}
+for(const [key,el] of Object.entries(fields)){
+  el.addEventListener('change', ()=>commitField(key));
+  el.addEventListener('keydown', e=>{ if(e.key==='Enter') el.blur(); });
+}
+
+// colour swatches
+const swWrap = $('swatches');
+CANDY.forEach(c=>{
+  const b=document.createElement('button');
+  b.className='sw'; b.style.background=c; b.dataset.c=c; b.title=c;
+  b.onclick=()=>{ const o=getObj(selectedId); if(!o)return; o.color=c; syncMesh(o); refreshInspector(); refreshObjList(); pushUndo(); };
+  swWrap.appendChild(b);
+});
+const custom=document.createElement('label');
+custom.className='sw custom'; custom.textContent='+'; custom.title='Custom colour';
+const cInput=document.createElement('input'); cInput.type='color'; cInput.value='#ff6b5e';
+custom.appendChild(cInput); swWrap.appendChild(custom);
+cInput.addEventListener('input', ()=>{ const o=getObj(selectedId); if(!o)return; o.color=cInput.value; syncMesh(o); refreshObjList(); });
+cInput.addEventListener('change', ()=>pushUndo());
+
+/* ---------------- palette & object list ---------------- */
+const ICON_GRADS = ['#ff6b5e','#ff9f43','#ffd166','#9ccc3c','#4ecdc4','#45aaf2','#5f6cf7','#a55eea','#fd79a8','#26de81','#ffb8b8','#74b9ff'];
+function shapeIcon(type, col){
+  const k = `<linearGradient id="g_${type}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${col}"/><stop offset="1" stop-color="${col}cc"/></linearGradient>`;
+  const f = `url(#g_${type})`, s = `stroke="#0b0d14" stroke-opacity=".25" stroke-width="1.4" stroke-linejoin="round"`;
+  let body='';
+  switch(type){
+    case 'box': body=`<path d="M21 6 35 13v14L21 34 7 27V13z" fill="${f}" ${s}/><path d="M7 13l14 7 14-7M21 20v14" fill="none" ${s}/>`; break;
+    case 'cylinder': body=`<path d="M9 11v18c0 3.3 5.4 6 12 6s12-2.7 12-6V11" fill="${f}" ${s}/><ellipse cx="21" cy="11" rx="12" ry="5" fill="${f}" ${s}/>`; break;
+    case 'sphere': body=`<circle cx="21" cy="20" r="14" fill="${f}" ${s}/><ellipse cx="21" cy="20" rx="14" ry="5.5" fill="none" ${s}/>`; break;
+    case 'dome': body=`<path d="M7 28a14 14 0 0 1 28 0z" fill="${f}" ${s}/><ellipse cx="21" cy="28" rx="14" ry="4.5" fill="${f}" ${s}/>`; break;
+    case 'cone': body=`<path d="M21 5 34 29H8z" fill="${f}" ${s}/><ellipse cx="21" cy="29" rx="13" ry="4.5" fill="${f}" ${s}/>`; break;
+    case 'pyramid': body=`<path d="M21 5 36 28l-15 7L6 28z" fill="${f}" ${s}/><path d="M21 5v30" fill="none" ${s}/>`; break;
+    case 'wedge': body=`<path d="M7 31 35 11v20z" fill="${f}" ${s}/><path d="M7 31l8 4 20-4" fill="none" ${s}/>`; break;
+    case 'torus': body=`<ellipse cx="21" cy="20" rx="15" ry="9" fill="${f}" ${s}/><ellipse cx="21" cy="19" rx="6.5" ry="3.5" fill="#262b3b" ${s}/>`; break;
+    case 'tube': body=`<path d="M8 10v18c0 3.5 5.8 6.5 13 6.5s13-3 13-6.5V10" fill="${f}" ${s}/><ellipse cx="21" cy="10" rx="13" ry="5.5" fill="${f}" ${s}/><ellipse cx="21" cy="10" rx="6" ry="2.6" fill="#262b3b" ${s}/>`; break;
+    case 'star': body=`<path d="M21 4l4.4 9.6L36 15l-7.6 7.2L30.4 33 21 27.6 11.6 33l2-10.8L6 15l10.6-1.4z" fill="${f}" ${s}/>`; break;
+    case 'heart': body=`<path d="M21 33C13 27 6 21.5 6 14.5 6 10 9.4 7 13.4 7c3 0 5.8 1.7 7.6 4.6C22.8 8.7 25.6 7 28.6 7 32.6 7 36 10 36 14.5c0 7-7 12.5-15 18.5z" fill="${f}" ${s}/>`; break;
+    case 'gem': body=`<path d="M21 4 35 20 21 36 7 20z" fill="${f}" ${s}/><path d="M7 20h28M21 4 13 20l8 16 8-16z" fill="none" ${s}/>`; break;
+  }
+  return `<svg viewBox="0 0 42 40" xmlns="http://www.w3.org/2000/svg"><defs>${k}</defs>${body}</svg>`;
+}
+const shapeGrid = $('shapeGrid');
+SHAPES.forEach((sh,i)=>{
+  const d=document.createElement('div');
+  d.className='shape'; d.title='Add '+sh.name;
+  d.innerHTML = shapeIcon(sh.type, ICON_GRADS[i%ICON_GRADS.length]) + `<span>${sh.name}</span>`;
+  d.onclick=()=>{ const o=addObject(sh.type); select(o.id); refreshAll(); pushUndo(); tip(`Added a <b>${sh.name}</b> — drag it around, or set exact sizes on the right`); };
+  shapeGrid.appendChild(d);
+});
+function refreshObjList(){
+  const list=$('objList'); list.innerHTML='';
+  if(!objects.length){ list.innerHTML='<div class="empty-note">Nothing here yet — add a shape!</div>'; return; }
+  [...objects].reverse().forEach(o=>{
+    const r=document.createElement('div');
+    r.className='objrow'+(o.id===selectedId?' sel':'');
+    r.innerHTML=`<span class="dot" style="background:${o.color}"></span><span class="nm">${o.name}</span>`;
+    r.onclick=()=>select(o.id);
+    list.appendChild(r);
+  });
+}
+function refreshAll(){ refreshObjList(); refreshInspector(); refreshStats(); }
+function refreshStats(){
+  $('statCount').textContent = objects.length;
+  $('statUnit').textContent = UNITS[unit].label;
+  $('statSnap').textContent = snap ? snap+' mm' : 'off';
+  $('unitTag1').textContent = UNITS[unit].label;
+  $('unitTag2').textContent = UNITS[unit].label;
+}
+
+/* ---------------- undo / redo ---------------- */
+function snapshot(){ return JSON.stringify(objects); }
+function pushUndo(){
+  undoStack.push(snapshot());
+  if(undoStack.length>120) undoStack.shift();
+  redoStack.length=0;
+  updateUndoButtons();
+}
+function restore(json){
+  const keep = selectedId;
+  clearAll();
+  const arr = JSON.parse(json);
+  for(const o of arr){
+    objects.push(o);
+    const mesh=new THREE.Mesh(getGeo(o.type), new THREE.MeshStandardMaterial({color:o.color, roughness:0.5, metalness:0.05}));
+    mesh.castShadow=true; mesh.receiveShadow=true; mesh.userData.id=o.id;
+    meshes[o.id]=mesh; scene.add(mesh); syncMesh(o);
+    const idn = parseInt(o.id.slice(1)); if(idn>=idCounter) idCounter=idn+1;
+  }
+  select(objects.some(o=>o.id===keep)?keep:null);
+  refreshAll();
+}
+function undo(){ if(undoStack.length<2) return; redoStack.push(undoStack.pop()); restore(undoStack[undoStack.length-1]); updateUndoButtons(); }
+function redo(){ if(!redoStack.length) return; const s=redoStack.pop(); undoStack.push(s); restore(s); updateUndoButtons(); }
+function updateUndoButtons(){ $('undoBtn').disabled = undoStack.length<2; $('redoBtn').disabled = !redoStack.length; }
+$('undoBtn').onclick=undo; $('redoBtn').onclick=redo;
+
+/* ---------------- pointer interaction ---------------- */
+const ray = new THREE.Raycaster();
+const ptr = new THREE.Vector2();
+let drag = null;
+
+function pick(e){
+  const r = canvas.getBoundingClientRect();
+  ptr.x = ((e.clientX-r.left)/r.width)*2-1;
+  ptr.y = -((e.clientY-r.top)/r.height)*2+1;
+  ray.setFromCamera(ptr, camera);
+  const hits = ray.intersectObjects(Object.values(meshes));
+  return hits.length?hits[0]:null;
+}
+function planePoint(y){
+  const pl = new THREE.Plane(new THREE.Vector3(0,1,0), -y);
+  const p = new THREE.Vector3();
+  return ray.ray.intersectPlane(pl, p) ? p : null;
+}
+function worldPerPixel(){
+  return 2*cam.radius*Math.tan(THREE.MathUtils.degToRad(camera.fov/2))/canvas.clientHeight;
+}
+function snapV(v){ return snap>0 ? Math.round(v/snap)*snap : v; }
+
+canvas.addEventListener('contextmenu', e=>e.preventDefault());
+canvas.addEventListener('pointerdown', e=>{
+  canvas.setPointerCapture(e.pointerId);
+  const pan = e.button===2 || e.button===1 || (e.button===0 && e.shiftKey);
+  if(pan){ drag={mode:'pan', x:e.clientX, y:e.clientY}; return; }
+  if(e.button!==0) return;
+  const hit = pick(e);
+  if(hit){
+    const id = hit.object.userData.id;
+    select(id); refreshObjList();
+    const o = getObj(id);
+    if(e.ctrlKey||e.metaKey){
+      drag={mode:'lift', id, x:e.clientX, y:e.clientY, moved:false};
+    } else {
+      const p = planePoint(hit.point.y);
+      drag={mode:'move', id, planeY:hit.point.y, moved:false,
+            off:{x:o.pos.x-(p?p.x:hit.point.x), z:o.pos.z-(p?p.z:hit.point.z)}};
+    }
+  } else {
+    drag={mode:'orbit', x:e.clientX, y:e.clientY, moved:false};
+  }
+});
+canvas.addEventListener('pointermove', e=>{
+  if(!drag) return;
+  if(drag.mode==='orbit'){
+    const dx=e.clientX-drag.x, dy=e.clientY-drag.y;
+    if(Math.abs(dx)+Math.abs(dy)>2) drag.moved=true;
+    cam.theta -= dx*0.0055;
+    cam.phi = THREE.MathUtils.clamp(cam.phi - dy*0.0055, 0.08, 1.54);
+    drag.x=e.clientX; drag.y=e.clientY;
+  }
+  else if(drag.mode==='pan'){
+    const dx=e.clientX-drag.x, dy=e.clientY-drag.y, wpp=worldPerPixel();
+    const dir=new THREE.Vector3(); camera.getWorldDirection(dir);
+    const right=new THREE.Vector3().crossVectors(dir, camera.up).normalize();
+    cam.target.addScaledVector(right, -dx*wpp);
+    cam.target.y += dy*wpp;
+    cam.target.x = THREE.MathUtils.clamp(cam.target.x,-400,400);
+    cam.target.z = THREE.MathUtils.clamp(cam.target.z,-400,400);
+    cam.target.y = THREE.MathUtils.clamp(cam.target.y,-50,400);
+    drag.x=e.clientX; drag.y=e.clientY;
+  }
+  else if(drag.mode==='move'){
+    const o=getObj(drag.id); if(!o) return;
+    const r=canvas.getBoundingClientRect();
+    ptr.x=((e.clientX-r.left)/r.width)*2-1; ptr.y=-((e.clientY-r.top)/r.height)*2+1;
+    ray.setFromCamera(ptr,camera);
+    const p=planePoint(drag.planeY); if(!p) return;
+    o.pos.x=snapV(p.x+drag.off.x); o.pos.z=snapV(p.z+drag.off.z);
+    drag.moved=true;
+    syncMesh(o); refreshInspector();
+  }
+  else if(drag.mode==='lift'){
+    const o=getObj(drag.id); if(!o) return;
+    const dy=e.clientY-drag.y;
+    o.pos.y = Math.max(-o.dims.h, o.pos.y - dy*worldPerPixel());
+    drag.y=e.clientY; drag.moved=true;
+    syncMesh(o); refreshInspector();
+  }
+});
+canvas.addEventListener('pointerup', e=>{
+  if(!drag) return;
+  if(drag.mode==='orbit' && !drag.moved) select(null);
+  if((drag.mode==='move'||drag.mode==='lift') && drag.moved) pushUndo();
+  drag=null;
+});
+canvas.addEventListener('wheel', e=>{
+  e.preventDefault();
+  cam.radius = THREE.MathUtils.clamp(cam.radius*(1+e.deltaY*0.0011), 30, 2500);
+},{passive:false});
+
+/* ---------------- keyboard ---------------- */
+window.addEventListener('keydown', e=>{
+  const tag=(document.activeElement&&document.activeElement.tagName)||'';
+  if(tag==='INPUT'||tag==='SELECT'||tag==='TEXTAREA') return;
+  const o = selectedId && getObj(selectedId);
+  const step = snap||1;
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){ e.preventDefault(); e.shiftKey?redo():undo(); return; }
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='y'){ e.preventDefault(); redo(); return; }
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='d'){ e.preventDefault(); duplicateSel(); return; }
+  if(!o) return;
+  let used=true;
+  switch(e.key){
+    case 'Delete': case 'Backspace': removeObject(o.id); refreshAll(); pushUndo(); tip('Deleted — <b>Ctrl+Z</b> brings it back'); break;
+    case 'ArrowLeft':  o.pos.x-=step; break;
+    case 'ArrowRight': o.pos.x+=step; break;
+    case 'ArrowUp':    o.pos.z-=step; break;
+    case 'ArrowDown':  o.pos.z+=step; break;
+    case 'PageUp':     o.pos.y+=step; break;
+    case 'PageDown':   o.pos.y=Math.max(-o.dims.h,o.pos.y-step); break;
+    case 'r': case 'R': o.rot.y=(o.rot.y+45)%360; break;
+    case 'd': case 'D': dropSel(); break;
+    default: used=false;
+  }
+  if(used){ e.preventDefault(); syncMesh(o); refreshInspector(); if(e.key.startsWith('Arrow')||e.key.startsWith('Page')||e.key==='r'||e.key==='R') pushUndo(); }
+});
+
+function duplicateSel(){
+  const o = selectedId && getObj(selectedId); if(!o) return;
+  const copy = addObject(o.type, {
+    name: o.name+' copy', color: o.color,
+    dims: {...o.dims}, rot: {...o.rot},
+    pos: {x:o.pos.x+o.dims.w+5, y:o.pos.y, z:o.pos.z},
+  });
+  select(copy.id); refreshAll(); pushUndo();
+}
+function dropSel(){
+  const o = selectedId && getObj(selectedId); if(!o) return;
+  const dy = elevation(o);
+  o.pos.y -= dy; syncMesh(o); refreshInspector(); pushUndo();
+}
+$('dupBtn').onclick = duplicateSel;
+$('delBtn').onclick = ()=>{ if(selectedId){ removeObject(selectedId); refreshAll(); pushUndo(); } };
+$('dropBtn').onclick = dropSel;
+$('rotBtn').onclick = ()=>{ const o=getObj(selectedId); if(!o)return; o.rot.y=(o.rot.y+45)%360; syncMesh(o); refreshInspector(); pushUndo(); };
+
+/* ---------------- views, units, snap ---------------- */
+document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{
+  const v=b.dataset.view;
+  if(v==='iso'){ cam.theta=Math.PI/4; cam.phi=1.05; }
+  if(v==='top'){ cam.theta=0; cam.phi=0.09; }
+  if(v==='front'){ cam.theta=0; cam.phi=1.45; }
+  if(v==='fit'){
+    if(!objects.length){ cam.target.set(0,12,0); cam.radius=300; return; }
+    const box=new THREE.Box3();
+    for(const m of Object.values(meshes)) box.expandByObject(m);
+    const c=new THREE.Vector3(), s=new THREE.Vector3();
+    box.getCenter(c); box.getSize(s);
+    cam.target.copy(c);
+    cam.radius=THREE.MathUtils.clamp(Math.max(s.x,s.y,s.z)*1.9+40, 60, 2200);
+  }
+});
+$('unitSel').onchange = e=>{ unit=e.target.value; refreshAll(); tip(`Now measuring in <b>${UNITS[unit].label}</b> — every size converts automatically`); };
+$('snapSel').onchange = e=>{ snap=parseFloat(e.target.value); refreshStats(); };
+
+/* ---------------- export ---------------- */
+function gatherTriangles(){
+  // returns [{name, color, verts:Float32Array (z-up world mm)}]
+  const out=[];
+  for(const o of objects){
+    const m=meshes[o.id]; if(!m) continue;
+    m.updateMatrixWorld(true);
+    let g=m.geometry;
+    if(g.index) g=g.toNonIndexed();
+    const src=g.attributes.position;
+    const verts=new Float32Array(src.count*3);
+    const v=new THREE.Vector3();
+    for(let i=0;i<src.count;i++){
+      v.fromBufferAttribute(src,i).applyMatrix4(m.matrixWorld);
+      verts[i*3]=v.x; verts[i*3+1]=-v.z; verts[i*3+2]=v.y;  // Y-up -> Z-up
+    }
+    out.push({name:o.name, color:o.color, verts});
+  }
+  return out;
+}
+function download(name, data, mime){
+  const blob = data instanceof Blob ? data : new Blob([data],{type:mime||'application/octet-stream'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download=name;
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href); a.remove();},400);
+}
+function exportSTL(){
+  const parts=gatherTriangles();
+  let tris=0; for(const p of parts) tris+=p.verts.length/9;
+  const buf=new ArrayBuffer(84+tris*50);
+  const dv=new DataView(buf);
+  const head='ShapeForge model (mm, binary STL)';
+  for(let i=0;i<Math.min(80,head.length);i++) dv.setUint8(i,head.charCodeAt(i));
+  dv.setUint32(80,tris,true);
+  let off=84;
+  const a=new THREE.Vector3(),b=new THREE.Vector3(),c=new THREE.Vector3(),n=new THREE.Vector3(),ab=new THREE.Vector3(),ac=new THREE.Vector3();
+  for(const p of parts){
+    const vts=p.verts;
+    for(let i=0;i<vts.length;i+=9){
+      a.set(vts[i],vts[i+1],vts[i+2]); b.set(vts[i+3],vts[i+4],vts[i+5]); c.set(vts[i+6],vts[i+7],vts[i+8]);
+      ab.subVectors(b,a); ac.subVectors(c,a); n.crossVectors(ab,ac).normalize();
+      dv.setFloat32(off,n.x,true); dv.setFloat32(off+4,n.y,true); dv.setFloat32(off+8,n.z,true); off+=12;
+      for(const v of [a,b,c]){ dv.setFloat32(off,v.x,true); dv.setFloat32(off+4,v.y,true); dv.setFloat32(off+8,v.z,true); off+=12; }
+      dv.setUint16(off,0,true); off+=2;
+    }
+  }
+  download('shapeforge-model.stl', buf, 'model/stl');
+}
+function exportOBJ(){
+  const parts=gatherTriangles();
+  let s='# ShapeForge export — units are millimetres, Z-up\n';
+  let base=1;
+  for(const p of parts){
+    s+='o '+p.name.replace(/\s+/g,'_')+'\n';
+    const v=p.verts;
+    for(let i=0;i<v.length;i+=3) s+=`v ${v[i].toFixed(4)} ${v[i+1].toFixed(4)} ${v[i+2].toFixed(4)}\n`;
+    for(let i=0;i<v.length/3;i+=3) s+=`f ${base+i} ${base+i+1} ${base+i+2}\n`;
+    base+=v.length/3;
+  }
+  download('shapeforge-model.obj', s, 'text/plain');
+}
+function exportPLY(){
+  const parts=gatherTriangles();
+  let nv=0, nf=0;
+  for(const p of parts){ nv+=p.verts.length/3; nf+=p.verts.length/9; }
+  let s='ply\nformat ascii 1.0\ncomment ShapeForge export (mm, Z-up)\n';
+  s+=`element vertex ${nv}\nproperty float x\nproperty float y\nproperty float z\n`;
+  s+='property uchar red\nproperty uchar green\nproperty uchar blue\n';
+  s+=`element face ${nf}\nproperty list uchar int vertex_indices\nend_header\n`;
+  for(const p of parts){
+    const col=new THREE.Color(p.color);
+    const r=Math.round(col.r*255), g=Math.round(col.g*255), b=Math.round(col.b*255);
+    const v=p.verts;
+    for(let i=0;i<v.length;i+=3) s+=`${v[i].toFixed(4)} ${v[i+1].toFixed(4)} ${v[i+2].toFixed(4)} ${r} ${g} ${b}\n`;
+  }
+  let base=0;
+  for(const p of parts){
+    const n=p.verts.length/3;
+    for(let i=0;i<n;i+=3) s+=`3 ${base+i} ${base+i+1} ${base+i+2}\n`;
+    base+=n;
+  }
+  download('shapeforge-model.ply', s, 'text/plain');
+}
+
+/* ---- minimal ZIP writer (stored, no compression) for 3MF ---- */
+const CRC_TABLE=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c;}return t;})();
+function crc32(u8){let c=0xFFFFFFFF;for(let i=0;i<u8.length;i++)c=CRC_TABLE[(c^u8[i])&0xFF]^(c>>>8);return (c^0xFFFFFFFF)>>>0;}
+function makeZip(files){ // files: [{name, data:Uint8Array}]
+  const enc=new TextEncoder();
+  const locals=[], centrals=[];
+  let offset=0;
+  for(const f of files){
+    const name=enc.encode(f.name), data=f.data, crc=crc32(data);
+    const lh=new Uint8Array(30+name.length);
+    const dv=new DataView(lh.buffer);
+    dv.setUint32(0,0x04034b50,true); dv.setUint16(4,20,true); dv.setUint16(6,0,true); dv.setUint16(8,0,true);
+    dv.setUint16(10,0,true); dv.setUint16(12,0x21,true); // fixed time/date
+    dv.setUint32(14,crc,true); dv.setUint32(18,data.length,true); dv.setUint32(22,data.length,true);
+    dv.setUint16(26,name.length,true); dv.setUint16(28,0,true);
+    lh.set(name,30);
+    locals.push(lh,data);
+    const ch=new Uint8Array(46+name.length);
+    const cv=new DataView(ch.buffer);
+    cv.setUint32(0,0x02014b50,true); cv.setUint16(4,20,true); cv.setUint16(6,20,true);
+    cv.setUint16(10,0,true); cv.setUint16(12,0,true); cv.setUint16(14,0x21,true);
+    cv.setUint32(16,crc,true); cv.setUint32(20,data.length,true); cv.setUint32(24,data.length,true);
+    cv.setUint16(28,name.length,true);
+    cv.setUint32(42,offset,true);
+    ch.set(name,46);
+    centrals.push(ch);
+    offset+=30+name.length+data.length;
+  }
+  let cdSize=0; for(const c of centrals) cdSize+=c.length;
+  const end=new Uint8Array(22);
+  const ev=new DataView(end.buffer);
+  ev.setUint32(0,0x06054b50,true);
+  ev.setUint16(8,files.length,true); ev.setUint16(10,files.length,true);
+  ev.setUint32(12,cdSize,true); ev.setUint32(16,offset,true);
+  const total=offset+cdSize+22;
+  const out=new Uint8Array(total);
+  let p=0;
+  for(const part of locals){ out.set(part,p); p+=part.length; }
+  for(const part of centrals){ out.set(part,p); p+=part.length; }
+  out.set(end,p);
+  return out;
+}
+function export3MF(){
+  const enc=new TextEncoder();
+  const parts=gatherTriangles();
+  let resources='', items='';
+  parts.forEach((p,idx)=>{
+    const id=idx+1, v=p.verts;
+    let vs='', ts='';
+    for(let i=0;i<v.length;i+=3) vs+=`<vertex x="${v[i].toFixed(4)}" y="${v[i+1].toFixed(4)}" z="${v[i+2].toFixed(4)}"/>`;
+    for(let i=0;i<v.length/3;i+=3) ts+=`<triangle v1="${i}" v2="${i+1}" v3="${i+2}"/>`;
+    resources+=`<object id="${id}" type="model" name="${p.name.replace(/[<>&"]/g,'')}"><mesh><vertices>${vs}</vertices><triangles>${ts}</triangles></mesh></object>`;
+    items+=`<item objectid="${id}"/>`;
+  });
+  const model=`<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><metadata name="Application">ShapeForge</metadata><resources>${resources}</resources><build>${items}</build></model>`;
+  const types=`<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>`;
+  const rels=`<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel-1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>`;
+  const zip=makeZip([
+    {name:'[Content_Types].xml', data:enc.encode(types)},
+    {name:'_rels/.rels', data:enc.encode(rels)},
+    {name:'3D/3dmodel.model', data:enc.encode(model)},
+  ]);
+  download('shapeforge-model.3mf', zip, 'model/3mf');
+}
+function exportProject(){
+  download('shapeforge-project.json',
+    JSON.stringify({app:'ShapeForge', version:1, unit, objects}, null, 1),
+    'application/json');
+}
+$('saveBtn').onclick=exportProject;
+$('openBtn').onclick=()=>$('openInput').click();
+$('openInput').addEventListener('change', e=>{
+  const file=e.target.files[0]; if(!file) return;
+  const fr=new FileReader();
+  fr.onload=()=>{
+    try{
+      const data=JSON.parse(fr.result);
+      if(!Array.isArray(data.objects)) throw 0;
+      restore(JSON.stringify(data.objects));
+      if(data.unit && UNITS[data.unit]){ unit=data.unit; $('unitSel').value=unit; }
+      refreshAll(); pushUndo();
+      tip(`Opened <b>${file.name}</b> — ${objects.length} object${objects.length===1?'':'s'} loaded`);
+    }catch(err){ tip('That file doesn\u2019t look like a ShapeForge project (.json)'); }
+  };
+  fr.readAsText(file);
+  e.target.value='';
+});
+
+const exportMenu=$('exportMenu');
+$('exportBtn').onclick=e=>{ e.stopPropagation(); exportMenu.classList.toggle('open'); };
+document.addEventListener('click', ()=>exportMenu.classList.remove('open'));
+exportMenu.querySelectorAll('[data-fmt]').forEach(b=>b.onclick=e=>{
+  e.stopPropagation(); exportMenu.classList.remove('open');
+  if(!objects.length && b.dataset.fmt!=='json'){ tip('Add at least one shape before exporting'); return; }
+  ({stl:exportSTL, obj:exportOBJ, ply:exportPLY, '3mf':export3MF, json:exportProject})[b.dataset.fmt]();
+  if(b.dataset.fmt!=='json') tip(`Exported <b>${b.dataset.fmt.toUpperCase()}</b> — sized in millimetres, ready for your slicer or 3D app`);
+});
+
+/* ---------------- help & tips ---------------- */
+const tipbar=$('tipbar');
+let tipTimer=null;
+function tip(html){
+  tipbar.innerHTML=html;
+  clearTimeout(tipTimer);
+  tipTimer=setTimeout(()=>{ tipbar.innerHTML=TIPS[Math.floor(Math.random()*TIPS.length)]; tipTimer=null; }, 6000);
+}
+setInterval(()=>{ if(!tipTimer) tipbar.innerHTML=TIPS[Math.floor(Math.random()*TIPS.length)]; }, 14000);
+$('helpBtn').onclick=()=>$('helpOverlay').classList.add('open');
+$('helpClose').onclick=()=>$('helpOverlay').classList.remove('open');
+$('helpOverlay').addEventListener('click', e=>{ if(e.target.id==='helpOverlay') e.target.classList.remove('open'); });
+
+/* ---------------- animation loop ---------------- */
+function easeOutBack(t){ const c=1.70158; return 1+(c+1)*Math.pow(t-1,3)+c*Math.pow(t-1,2); }
+function loop(){
+  resize();
+  updateCamera();
+  const now=performance.now();
+  for(const o of objects){
+    const m=meshes[o.id]; if(!m) continue;
+    if(m.userData.spawn){
+      const t=(now-m.userData.spawn)/320;
+      if(t>=1){ m.userData.spawn=null; m.scale.set(o.dims.w,o.dims.h,o.dims.d); }
+      else { const s=Math.max(0.02,easeOutBack(t)); m.scale.set(o.dims.w*s,o.dims.h*s,o.dims.d*s); }
+    }
+  }
+  if(selectedId && meshes[selectedId]){
+    selBox.box.setFromObject(meshes[selectedId]);
+    selBox.visible=true;
+  } else selBox.visible=false;
+  renderer.render(scene,camera);
+  requestAnimationFrame(loop);
+}
+
+/* ---------------- boot ---------------- */
+(function start(){
+  const o=addObject('box',{name:'Starter box', color:'#4ecdc4', pos:{x:0,y:10,z:0}});
+  select(o.id);
+  refreshAll();
+  pushUndo();
+  loop();
+})();
+
+})();
+
+</script>
+</body>
+</html>
