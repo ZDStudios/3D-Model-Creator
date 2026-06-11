@@ -6,7 +6,7 @@ A lightweight, browser-based 3D modeller. No install, no account — just open t
 
 ## Getting Started
 
-1. Open **shapeforge-3d-modeler.html** in any modern browser (Chrome, Firefox, Edge, Safari).
+1. Open **shapeforge.html** in any modern browser (Chrome, Firefox, Edge, Safari).
 2. Click a shape in the left panel to add it to the workplane.
 3. Drag it around, resize it in the inspector on the right, change its colour.
 4. Export when you're happy — STL and 3MF go straight to most slicers.
